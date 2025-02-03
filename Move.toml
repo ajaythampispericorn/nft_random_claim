@@ -1,0 +1,22 @@
+[package]
+name = "nft_random_claim"
+version = "1.0.0"
+authors = []
+
+[addresses]
+voting_addr = "0xcc68a642cfc8b7119d208e07d397a04fa716c7ffc523a3506c475036ce35f036"
+std = "0x1"
+aptos_std = "0x1"
+aptos_framework = "0x1"
+
+[networks]
+testnet = { rpc = "https://fullnode.testnet.aptoslabs.com/v1" }
+
+[dev-addresses]
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dev-dependencies]
