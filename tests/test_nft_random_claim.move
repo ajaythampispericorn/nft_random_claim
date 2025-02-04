@@ -1,153 +1,254 @@
+#[test_only]
 module nft_collection::random_nft_tests {
-    use std::string;
+    use std::string::{Self, String};
     use std::signer;
     use std::vector;
-    use aptos_framework::account;
+    use aptos_framework::account::{Self, SignerCapability};
     use aptos_framework::timestamp;
     use aptos_framework::resource_account;
-    use aptos_framework::randomness;
-    use nft_collection::random_nft;
+    use nft_collection::random_nft::{Self, CollectionState};
 
-    const RESOURCE_ADDR: address = @0x123;
-    const COLLECTION_NAME: vector<u8> = b"Test NFT Collection";
-    
-    #[test(admin = @0x1, resource_account = @0x123)]
-    public entry fun test_initialize(admin: signer, resource_account: signer) {
-        timestamp::set_time_has_started_for_testing(&admin);
+    const RESOURCE_ACCOUNT: address = @nft_collection;
+
+    fun setup(aptos: &signer, admin: &signer) {
+        timestamp::set_time_has_started_for_testing(aptos);
         
-        resource_account::create_resource_account_and_publish_package(
-            &admin,
-            vector::empty(),
-            vector::empty(),
+        // Create the admin account
+        account::create_account_for_test(RESOURCE_ACCOUNT);
+        
+        // Create the resource account with a seed and fund it
+        let seed = vector::empty<u8>();
+        vector::append(&mut seed, b"SEED_1234");
+        let resource_signer = account::create_account_for_test(RESOURCE_ACCOUNT);
+        
+        // Create and retrieve the resource account signer capability
+        let resource_cap = resource_account::create_resource_account_and_fund(
+            admin,            // Source account signer
+            vector::empty<u8>(), // Optional capability offer
+            seed,            // Seed for resource account
+            vector::empty<u8>(), // Optional metadata serialized
         );
+    }
+
+    #[test(admin = @nft_collection, aptos = @aptos_framework)]
+    fun test_initialize_success(admin: &signer, aptos: &signer) {
+        setup(aptos, admin);
         
-        random_nft::initialize(
-            &admin,
-            signer::address_of(&resource_account),
-            string::utf8(COLLECTION_NAME),
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+    }
+
+    #[test(admin = @nft_collection, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 4, location = nft_collection::random_nft)]
+    fun test_initialize_invalid_resource_address(admin: &signer, aptos: &signer) {
+        setup(aptos, admin);
+
+        random_nft::initialize_internal(
+            admin,
+            @0x123,  // Invalid resource address
+            string::utf8(b"Test Collection"),
             string::utf8(b"Test Description"),
             string::utf8(b"https://test.uri"),
-            10
+            100
         );
     }
 
-    #[test(admin = @0x1, resource_account = @0x123, claimer = @0x456)]
-    public entry fun test_add_and_claim_token(
-        admin: signer,
-        resource_account: signer,
-        claimer: signer
-    ) {
-        test_initialize(admin, resource_account);
+    #[test(admin = @nft_collection, aptos = @aptos_framework)]
+    fun test_add_token_success(admin: &signer, aptos: &signer) {
+        setup(aptos, admin);
 
-        random_nft::add_token(
-            &admin,
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::add_token_internal(
+            admin,
+            1,
+            string::utf8(b"Token #1"),
+            string::utf8(b"Token Description"),
+            string::utf8(b"https://token1.uri")
+        );
+    }
+
+    #[test(admin = @nft_collection, other = @0x2, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 4, location = nft_collection::random_nft)]
+    fun test_add_token_invalid_admin(admin: &signer, other: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(other));
+
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::add_token_internal(
+            other,
+            1,
+            string::utf8(b"Token #1"),
+            string::utf8(b"Token Description"),
+            string::utf8(b"https://token1.uri")
+        );
+    }
+
+    #[test(admin = @nft_collection, claimer = @0x2, aptos = @aptos_framework)]
+    #[lint::allow_unsafe_randomness]
+    fun test_claim_nft_success(admin: &signer, claimer: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(claimer));
+
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::add_token_internal(
+            admin,
             0,
             string::utf8(b"Token #1"),
-            string::utf8(b"First Token"),
-            string::utf8(b"https://test.uri/1"),
+            string::utf8(b"Token Description"),
+            string::utf8(b"https://token1.uri")
         );
 
-        random_nft::claim_random_nft(
-            &claimer, 
-            RESOURCE_ADDR, 
-            string::utf8(COLLECTION_NAME)
+        random_nft::claim_test(
+            claimer,
+            RESOURCE_ACCOUNT,
         );
     }
 
-    #[test(admin = @0x1, resource_account = @0x123, claimer = @0x456)]
-    public entry fun test_multiple_token_claims(
-        admin: signer,
-        resource_account: signer,
-        claimer: signer
-    ) {
-        test_initialize(admin, resource_account);
+    #[test(admin = @nft_collection, claimer = @0x2, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 3, location = nft_collection::random_nft)]
+    #[lint::allow_unsafe_randomness]
+    fun test_claim_nft_paused(admin: &signer, claimer: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(claimer));
 
-        // Add multiple tokens
-        let tokens = vector[
-            string::utf8(b"Token #1"),
-            string::utf8(b"Token #2"),
-            string::utf8(b"Token #3")
-        ];
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
 
-        vector::enumerate_with_index(tokens, |i, token_name| {
-            random_nft::add_token(
-                &admin,
-                (i as u64),
-                token_name,
-                string::utf8(b"Token Description"),
-                string::utf8(b"https://test.uri/token"),
-            );
-        });
-
-        // Claim multiple tokens
-        let i = 0;
-        while (i < 3) {
-            random_nft::claim_random_nft(
-                &claimer, 
-                RESOURCE_ADDR, 
-                string::utf8(COLLECTION_NAME)
-            );
-            i = i + 1;
-        };
-    }
-
-    #[test(admin = @0x1, resource_account = @0x123, claimer = @0x456)]
-    #[expected_failure(abort_code = 2)]
-    public entry fun test_claim_sold_out(
-        admin: signer,
-        resource_account: signer,
-        claimer: signer
-    ) {
-        test_initialize(admin, resource_account);
-
-        random_nft::add_token(
-            &admin,
+        random_nft::add_token_internal(
+            admin,
             0,
             string::utf8(b"Token #1"),
-            string::utf8(b"First Token"),
-            string::utf8(b"https://test.uri/1"),
+            string::utf8(b"Token Description"),
+            string::utf8(b"https://token1.uri")
         );
 
-        // First claim should succeed
-        random_nft::claim_random_nft(
-            &claimer, 
-            RESOURCE_ADDR, 
-            string::utf8(COLLECTION_NAME)
-        );
-        
-        // Second claim should fail with ESOLD_OUT
-        random_nft::claim_random_nft(
-            &claimer, 
-            RESOURCE_ADDR, 
-            string::utf8(COLLECTION_NAME)
+        random_nft::pause_internal(admin, RESOURCE_ACCOUNT);
+
+        random_nft::claim_test(
+            claimer,
+            RESOURCE_ACCOUNT,
         );
     }
 
-    #[test(admin = @0x1, resource_account = @0x123, claimer = @0x456)]
-    #[expected_failure(abort_code = 3)]
-    public entry fun test_claim_when_paused(
-        admin: signer,
-        resource_account: signer,
-        claimer: signer
-    ) {
-        test_initialize(admin, resource_account);
+    #[test(admin = @nft_collection, claimer = @0x2, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 2, location = nft_collection::random_nft)]
+    #[lint::allow_unsafe_randomness]
+    fun test_claim_nft_sold_out(admin: &signer, claimer: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(claimer));
 
-        random_nft::add_token(
-            &admin,
+        // Initialize with total supply of 1
+        random_nft::initialize_internal(
+            admin,
+            RESOURCE_ACCOUNT,
+            string::utf8(b"Test Collection"),
+            string::utf8(b"Test Description"),
+            string::utf8(b"https://test.uri"),
+            1
+        );
+
+        random_nft::add_token_internal(
+            admin,
             0,
             string::utf8(b"Token #1"),
-            string::utf8(b"First Token"),
-            string::utf8(b"https://test.uri/1"),
+            string::utf8(b"Token Description"),
+            string::utf8(b"https://token1.uri")
         );
 
-        // Pause collection
-        random_nft::pause(&admin, RESOURCE_ADDR);
-        
-        // Attempt to claim while paused (should fail)
-        random_nft::claim_random_nft(
-            &claimer, 
-            RESOURCE_ADDR, 
-            string::utf8(COLLECTION_NAME)
+        // Claim the only available token
+        random_nft::claim_test(
+            claimer,
+            RESOURCE_ACCOUNT,
         );
+
+        // Try to claim again when sold out
+        random_nft::claim_test(
+            claimer,
+            RESOURCE_ACCOUNT,
+        );
+    }
+
+    #[test(admin = @nft_collection, claimer = @0x2, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 4, location = nft_collection::random_nft)]
+    #[lint::allow_unsafe_randomness]
+    fun test_claim_nft_invalid_resource_address(admin: &signer, claimer: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(claimer));
+
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::add_token_internal(
+            admin,
+            0,
+            string::utf8(b"Token #1"),
+            string::utf8(b"Token Description"),
+            string::utf8(b"https://token1.uri")
+        );
+
+        random_nft::claim_test(
+            claimer,
+            @0x123  // Invalid resource address
+        );
+    }
+
+    #[test(admin = @nft_collection, aptos = @aptos_framework)]
+    fun test_pause_unpause_success(admin: &signer, aptos: &signer) {
+        setup(aptos, admin);
+
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::pause_internal(admin, RESOURCE_ACCOUNT);
+        random_nft::unpause_internal(admin, RESOURCE_ACCOUNT);
+    }
+
+    #[test(admin = @nft_collection, other = @0x2, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 0, location = nft_collection::random_nft)]
+    fun test_pause_invalid_admin(admin: &signer, other: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(other));
+
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::pause_internal(other, RESOURCE_ACCOUNT);
+    }
+
+    #[test(admin = @nft_collection, other = @0x2, aptos = @aptos_framework)]
+    #[expected_failure(abort_code = 0, location = nft_collection::random_nft)]
+    fun test_unpause_invalid_admin(admin: &signer, other: &signer, aptos: &signer) {
+        setup(aptos, admin);
+        account::create_account_for_test(signer::address_of(other));
+
+        random_nft::init_test(
+            admin,
+            RESOURCE_ACCOUNT,
+        );
+
+        random_nft::pause_internal(admin, RESOURCE_ACCOUNT);
+        random_nft::unpause_internal(other, RESOURCE_ACCOUNT);
     }
 }
