@@ -3,18 +3,34 @@ module nft_collection::random_nft {
     use std::signer;
     use std::string::{Self, String};
     use std::vector;
-    use aptos_framework::account;
+    use aptos_framework::account::{Self, SignerCapability};
     use aptos_framework::event::{Self, EventHandle};
     use aptos_framework::timestamp;
     use aptos_std::simple_map::{Self, SimpleMap};
     use aptos_framework::randomness;
+    use aptos_framework::resource_account;
 
-    // Error codes
-    const NFT_ALREADY_EXISTS: u64 = 1;
-    const NFT_DOES_NOT_EXIST: u64 = 2;
-    const NOT_OWNER: u64 = 3;
-    const COLLECTION_NOT_INITIALIZED: u64 = 4;
-    const ALL_TOKENS_CLAIMED: u64 = 5;
+    // Define module addresses
+    const ADMIN_ADDRESS: address = @nft_collection;
+
+    // Error categories in Move use specific ranges:
+    // 0x1 = INVALID_ARGUMENT
+    // 0x2 = REQUIRES_ADDRESS
+    // 0x3 = REQUIRES_CAPABILITY
+    // 0x4 = NOT_PUBLISHED
+    // 0x5 = ALREADY_PUBLISHED
+    // 0x6 = INVALID_STATE
+
+    const ENFT_ALREADY_EXISTS: u64 = 0x50001; // Using ALREADY_PUBLISHED category
+    const ENFT_DOES_NOT_EXIST: u64 = 0x40001; // Using NOT_PUBLISHED category
+    const ENOT_OWNER: u64 = 0x30001; // Using REQUIRES_CAPABILITY category
+    const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002; // Using NOT_PUBLISHED category
+    const EALL_TOKENS_CLAIMED: u64 = 0x60001; // Using INVALID_STATE category
+
+    // Store signer capability for the resource account
+    struct ResourceAccountCap has key {
+        signer_cap: SignerCapability
+    }
 
     // Struct to store NFT data
     struct NFT has store, drop {
@@ -23,7 +39,7 @@ module nft_collection::random_nft {
         uri: String,
     }
 
-    // Collection data stored in global storage
+    // Collection data stored in resource account storage
     struct Collection has key {
         nfts: SimpleMap<u64, NFT>,
         total_supply: u64,
@@ -38,15 +54,24 @@ module nft_collection::random_nft {
         timestamp: u64,
     }
 
-    // Initialize module with resource account
-    fun init_module(account: &signer) {
+    // Initialize module and create resource account
+    fun init_module(admin: &signer) {
+        // Create resource account from module address
+        let (resource_signer, signer_cap) = account::create_resource_account(admin, vector::empty());
+        
+        // Store signer capability
+        move_to(admin, ResourceAccountCap {
+            signer_cap
+        });
+
+        // Initialize collection in resource account storage
         let collection = Collection {
-            nfts: simple_map::create(),
-            total_supply: 100, // Example total supply
+            nfts: simple_map::new(),
+            total_supply: 100,
             minted: 0,
-            mint_events: account::new_event_handle<MintEvent>(account),
+            mint_events: account::new_event_handle<MintEvent>(&resource_signer),
         };
-        move_to(account, collection);
+        move_to(&resource_signer, collection);
     }
 
     // Add NFT to collection (admin only)
@@ -56,12 +81,17 @@ module nft_collection::random_nft {
         name: String,
         description: String,
         uri: String
-    ) acquires Collection {
-        let admin_addr = signer::address_of(admin);
-        assert!(exists<Collection>(admin_addr), error::not_found(COLLECTION_NOT_INITIALIZED));
+    ) acquires Collection, ResourceAccountCap {
+        assert!(signer::address_of(admin) == ADMIN_ADDRESS, error::permission_denied(ENOT_OWNER));
         
-        let collection = borrow_global_mut<Collection>(admin_addr);
-        assert!(!simple_map::contains_key(&collection.nfts, &token_id), error::already_exists(NFT_ALREADY_EXISTS));
+        // Get resource account address from capability
+        let resource_cap = borrow_global<ResourceAccountCap>(ADMIN_ADDRESS);
+        let resource_account_address = account::get_signer_capability_address(&resource_cap.signer_cap);
+        
+        assert!(exists<Collection>(resource_account_address), error::not_found(ECOLLECTION_NOT_INITIALIZED));
+        
+        let collection = borrow_global_mut<Collection>(resource_account_address);
+        assert!(!simple_map::contains_key(&collection.nfts, &token_id), error::already_exists(ENFT_ALREADY_EXISTS));
 
         let nft = NFT {
             name,
@@ -73,11 +103,15 @@ module nft_collection::random_nft {
 
     // Claim a random NFT
     #[lint::allow_unsafe_randomness]
-    public entry fun claim_random_nft(recipient: &signer) acquires Collection {
+    public entry fun claim_random_nft(recipient: &signer) acquires Collection, ResourceAccountCap {
         let recipient_addr = signer::address_of(recipient);
-        let collection = borrow_global_mut<Collection>(@nft_collection);
         
-        assert!(collection.minted < collection.total_supply, error::invalid_state(ALL_TOKENS_CLAIMED));
+        // Get resource account address from capability
+        let resource_cap = borrow_global<ResourceAccountCap>(ADMIN_ADDRESS);
+        let resource_account_address = account::get_signer_capability_address(&resource_cap.signer_cap);
+        
+        let collection = borrow_global_mut<Collection>(resource_account_address);
+        assert!(collection.minted < collection.total_supply, error::invalid_state(EALL_TOKENS_CLAIMED));
 
         // Get random number using Aptos randomness
         let random_seed = randomness::u64_range(0, collection.total_supply);
@@ -113,33 +147,58 @@ module nft_collection::random_nft {
             };
             current_index = current_index + 1;
         };
-        abort error::invalid_state(ALL_TOKENS_CLAIMED)
+        abort error::invalid_state(EALL_TOKENS_CLAIMED)
     }
 
     // Getter functions
     #[view]
-    public fun get_nft_info(token_id: u64): (String, String, String) acquires Collection {
-        let collection = borrow_global<Collection>(@nft_collection);
-        assert!(simple_map::contains_key(&collection.nfts, &token_id), error::not_found(NFT_DOES_NOT_EXIST));
+    public fun get_nft_info(token_id: u64): (String, String, String) acquires Collection, ResourceAccountCap {
+        let resource_cap = borrow_global<ResourceAccountCap>(ADMIN_ADDRESS);
+        let resource_account_address = account::get_signer_capability_address(&resource_cap.signer_cap);
+        
+        let collection = borrow_global<Collection>(resource_account_address);
+        assert!(simple_map::contains_key(&collection.nfts, &token_id), error::not_found(ENFT_DOES_NOT_EXIST));
         
         let nft = simple_map::borrow(&collection.nfts, &token_id);
         (nft.name, nft.description, nft.uri)
     }
 
     #[view]
-    public fun get_total_supply(): u64 acquires Collection {
-        let collection = borrow_global<Collection>(@nft_collection);
+    public fun get_total_supply(): u64 acquires Collection, ResourceAccountCap {
+        let resource_cap = borrow_global<ResourceAccountCap>(ADMIN_ADDRESS);
+        let resource_account_address = account::get_signer_capability_address(&resource_cap.signer_cap);
+        
+        let collection = borrow_global<Collection>(resource_account_address);
         collection.total_supply
     }
 
     #[view]
-    public fun get_minted(): u64 acquires Collection {
-        let collection = borrow_global<Collection>(@nft_collection);
+    public fun get_minted(): u64 acquires Collection, ResourceAccountCap {
+        let resource_cap = borrow_global<ResourceAccountCap>(ADMIN_ADDRESS);
+        let resource_account_address = account::get_signer_capability_address(&resource_cap.signer_cap);
+        
+        let collection = borrow_global<Collection>(resource_account_address);
         collection.minted
     }
 
     #[test_only]
-    public fun initialize_for_test(account: &signer) {
-        init_module(account)
+    public fun initialize_for_test(admin: &signer) {
+        init_module(admin)
+    }
+
+    #[test_only]
+    public fun test_has_resource_cap(addr: address): bool {
+        exists<ResourceAccountCap>(addr)
+    }
+
+    #[test_only]
+    public fun test_get_resource_account_address(admin_addr: address): address acquires ResourceAccountCap {
+        let resource_cap = borrow_global<ResourceAccountCap>(admin_addr);
+        account::get_signer_capability_address(&resource_cap.signer_cap)
+    }
+
+    #[test_only]
+    public fun test_has_collection(addr: address): bool {
+        exists<Collection>(addr)
     }
 }
