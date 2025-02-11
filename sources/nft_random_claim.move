@@ -201,4 +201,12 @@ module nft_collection::random_nft {
     public fun test_has_collection(addr: address): bool {
         exists<Collection>(addr)
     }
+
+    #[test_only]
+    public fun initialize_resource_cap_for_test(admin: &signer) {
+        let (_, signer_cap) = account::create_resource_account(admin, vector::empty());
+        move_to(admin, ResourceAccountCap {
+            signer_cap
+        });
+    }
 }
