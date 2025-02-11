@@ -131,23 +131,23 @@ module nft_collection::random_nft {
 
     // Helper function to find next available token
     fun find_next_available_token(collection: &Collection, start_index: u64): u64 {
-        let current_index = start_index;
-        while (current_index < collection.total_supply) {
-            if (simple_map::contains_key(&collection.nfts, &current_index)) {
-                return current_index
-            };
-            current_index = current_index + 1;
+    let current_index = start_index;
+    while (current_index < collection.total_supply) {
+        if (!simple_map::contains_key(&collection.nfts, &current_index)) {
+            return current_index
         };
-        
-        // If we didn't find a token after start_index, look from beginning
-        current_index = 0;
-        while (current_index < start_index) {
-            if (simple_map::contains_key(&collection.nfts, &current_index)) {
-                return current_index
-            };
-            current_index = current_index + 1;
+        current_index = current_index + 1;
+    };
+    
+    // If we didn't find a token after start_index, look from beginning
+    current_index = 0;
+    while (current_index < start_index) {
+        if (!simple_map::contains_key(&collection.nfts, &current_index)) {
+            return current_index
         };
-        abort error::invalid_state(EALL_TOKENS_CLAIMED)
+        current_index = current_index + 1;
+    };
+    abort error::invalid_state(EALL_TOKENS_CLAIMED)
     }
 
     // Getter functions

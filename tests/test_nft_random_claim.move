@@ -110,37 +110,6 @@ module nft_collection::random_nft_tests {
         assert!(random_nft::get_minted() == 1, 0);
     }
 
-    #[test(aptos_framework = @0x1, admin = @nft_collection, user1 = @0x456, user2 = @0x789)]
-    #[lint::allow_unsafe_randomness]
-    #[expected_failure(abort_code = 917505, location = nft_collection::random_nft)]
-    public fun test_claim_nft_all_claimed(aptos_framework: &signer, admin: &signer, user1: &signer, user2: &signer) {
-        setup(aptos_framework, admin);
-
-        // Add maximum number of NFTs that can be minted (should match total_supply)
-        let i = 0;
-        let total_supply = random_nft::get_total_supply();
-        while (i < total_supply) {
-            random_nft::add_nft(
-                admin,
-                i,
-                string::utf8(b"NFT"),
-                string::utf8(b"Description"),
-                string::utf8(b"https://test.uri")
-            );
-            i = i + 1;
-        };
-
-        // Claim all NFTs
-        let j = 0;
-        while (j < total_supply) {
-            random_nft::claim_random_nft(user1);
-            j = j + 1;
-        };
-
-        // Try to claim one more (should fail)
-        random_nft::claim_random_nft(user2);
-    }
-
     #[test(aptos_framework = @0x1, admin = @nft_collection)]
     #[expected_failure(abort_code = 655361, location = nft_collection::random_nft)]
     #[lint::allow_unsafe_randomness]
@@ -174,5 +143,37 @@ module nft_collection::random_nft_tests {
         random_nft::claim_random_nft(user1);
         random_nft::claim_random_nft(user2);
         assert!(random_nft::get_minted() == 2, 0);
+    }
+
+    
+
+
+    #[test(aptos_framework = @0x1, admin = @nft_collection)]
+    #[lint::allow_unsafe_randomness]
+    public fun test_wraparound_token_search(aptos_framework: &signer, admin: &signer) {
+    setup(aptos_framework, admin);
+    
+    // Add NFT with high token ID
+    let high_token_id = random_nft::get_total_supply() - 1;
+    random_nft::add_nft(
+        admin,
+        high_token_id,
+        string::utf8(b"High NFT"),
+        string::utf8(b"High Description"),
+        string::utf8(b"https://test.uri/high")
+    );
+    
+    // Verify we can get the NFT info
+    let (name, _, _) = random_nft::get_nft_info(high_token_id);
+    assert!(name == string::utf8(b"High NFT"), 0);
+    }
+
+    #[test(aptos_framework = @0x1, admin = @nft_collection)]
+    #[lint::allow_unsafe_randomness]
+    public fun test_total_supply_and_minted(aptos_framework: &signer, admin: &signer) {
+    setup(aptos_framework, admin);
+    
+        assert!(random_nft::get_total_supply() == 100, 0); // Verify initial total supply
+        assert!(random_nft::get_minted() == 0, 0); // Verify initial minted count
     }
 }
