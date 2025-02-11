@@ -8,11 +8,11 @@ module nft_collection::nft_claim_tests {
     use nft_collection::random_nft;
 
     // Error constants matching the ones in random_nft module
-    const ENFT_ALREADY_EXISTS: u64 = 0xD0001; // 851969 in decimal
-    const ENOT_OWNER: u64 = 0x80001; // 524289 in decimal
-    const ENFT_DOES_NOT_EXIST: u64 = 0x40001;
+    const ENFT_ALREADY_EXISTS: u64 = 0xD0001;
+    const ENOT_OWNER: u64 = 0x80001;
+    const ENFT_DOES_NOT_EXIST: u64 = 0xA0001;
     const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002;
-    const EALL_TOKENS_CLAIMED: u64 = 0x90001; // 589825 in decimal
+    const EALL_TOKENS_CLAIMED: u64 = 0x90001;
 
     // Test helper function to create test addresses and signers
     fun create_test_signer(addr: address): signer {
@@ -50,10 +50,14 @@ module nft_collection::nft_claim_tests {
         
         random_nft::add_nft(&admin, 1, name, description, uri);
         
-        let (returned_name, returned_desc, returned_uri) = random_nft::get_nft_info(1);
-        assert!(returned_name == name, 0);
-        assert!(returned_desc == description, 0);
-        assert!(returned_uri == uri, 0);
+        // Verify the NFT was added by checking its info
+        let (actual_name, actual_desc, actual_uri) = random_nft::get_nft_info(1);
+        assert!(actual_name == name, 0);
+        assert!(actual_desc == description, 0);
+        assert!(actual_uri == uri, 0);
+        
+        // Verify total supply is still 100 (the initialized value)
+        assert!(random_nft::get_total_supply() == 100, 0);
     }
 
     #[test]
@@ -97,6 +101,33 @@ module nft_collection::nft_claim_tests {
     }
 
     #[test]
+    fun test_multiple_users_claiming() {
+        setup_aptos_framework();
+        let admin = create_test_signer(@nft_collection);
+        random_nft::initialize_for_test(&admin);
+        
+        let name = string::utf8(b"Test NFT");
+        let description = string::utf8(b"Test Description");
+        let uri = string::utf8(b"https://test.uri");
+        
+        let i = 0;
+        while (i < 10) {
+            random_nft::add_nft(&admin, i, name, description, uri);
+            i = i + 1;
+        };
+        
+        let user1 = create_test_signer(@0x123);
+        let user2 = create_test_signer(@0x124);
+        let user3 = create_test_signer(@0x125);
+        
+        random_nft::claim_random_nft(&user1);
+        random_nft::claim_random_nft(&user2);
+        random_nft::claim_random_nft(&user3);
+        
+        assert!(random_nft::get_minted() == 3, 0);
+    }
+
+    #[test]
     #[expected_failure(abort_code = 0x80001)] // ENOT_OWNER
     fun test_only_admin_can_add_nft() {
         setup_aptos_framework();
@@ -114,7 +145,7 @@ module nft_collection::nft_claim_tests {
     #[test]
     #[expected_failure(abort_code = 0x90001)] // EALL_TOKENS_CLAIMED
     fun test_all_tokens_claimed() {
-        let framework_signer = setup_aptos_framework();
+        setup_aptos_framework();
         let admin = create_test_signer(@nft_collection);
         random_nft::initialize_for_test(&admin);
         
@@ -130,8 +161,6 @@ module nft_collection::nft_claim_tests {
         };
         
         let user = create_test_signer(@0x123);
-        
-        // Try to claim more than total supply
         i = 0;
         while (i < 101) {
             random_nft::claim_random_nft(&user);
@@ -145,5 +174,23 @@ module nft_collection::nft_claim_tests {
         let admin = create_test_signer(@nft_collection);
         random_nft::initialize_for_test(&admin);
         assert!(random_nft::get_total_supply() == 100, 0);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = 0xA0001)] // ENFT_DOES_NOT_EXIST
+    fun test_get_nonexistent_nft() {
+        setup_aptos_framework();
+        let admin = create_test_signer(@nft_collection);
+        random_nft::initialize_for_test(&admin);
+        
+        random_nft::get_nft_info(999); // Should fail with ENFT_DOES_NOT_EXIST
+    }
+
+    #[test]
+    fun test_resource_account_initialization() {
+        setup_aptos_framework();
+        let admin = create_test_signer(@nft_collection);
+        random_nft::initialize_resource_cap_for_test(&admin);
+        assert!(random_nft::test_has_resource_cap(@nft_collection), 0);
     }
 }
