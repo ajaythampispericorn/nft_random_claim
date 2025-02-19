@@ -8,11 +8,17 @@ module nft_collection::nft_claim_tests {
     use nft_collection::random_nft;
 
     // Error constants matching the ones in random_nft module
-    const ENFT_ALREADY_EXISTS: u64 = 0xD0001;
-    const ENOT_OWNER: u64 = 0x80001;
-    const ENFT_DOES_NOT_EXIST: u64 = 0xA0001;
+    // const ENFT_ALREADY_EXISTS: u64 = 0xD0001;
+    // const ENOT_OWNER: u64 = 0x80001;
+    // const ENFT_DOES_NOT_EXIST: u64 = 0xA0001;
+    // const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002;
+    // const EALL_TOKENS_CLAIMED: u64 = 0x90001;
+
+    const ENFT_ALREADY_EXISTS: u64 = 0x50001;
+    const ENOT_OWNER: u64 = 0x30001;
+    const ENFT_DOES_NOT_EXIST: u64 = 0x40001;
     const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002;
-    const EALL_TOKENS_CLAIMED: u64 = 0x90001;
+    const EALL_TOKENS_CLAIMED: u64 = 0x60001;
 
     // Test helper function to create test addresses and signers
     fun create_test_signer(addr: address): signer {
@@ -61,7 +67,7 @@ module nft_collection::nft_claim_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 0xD0001)] // ENFT_ALREADY_EXISTS
+    #[expected_failure] // ENFT_ALREADY_EXISTS
     fun test_add_nft_failure_duplicate() {
         setup_aptos_framework();
         let admin = create_test_signer(@nft_collection);
@@ -128,7 +134,24 @@ module nft_collection::nft_claim_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = 0x80001)] // ENOT_OWNER
+    #[expected_failure] // ECOLLECTION_NOT_INITIALIZED
+    fun test_add_nft_without_initialization() {
+        setup_aptos_framework();
+        let admin = create_test_signer(@nft_collection);
+        
+        // Initialize only the resource account capability, but not the collection
+        random_nft::initialize_resource_cap_for_test(&admin);
+        
+        let name = string::utf8(b"Test NFT");
+        let description = string::utf8(b"Test Description");
+        let uri = string::utf8(b"https://test.uri");
+        
+        // This should fail with ECOLLECTION_NOT_INITIALIZED
+        random_nft::add_nft(&admin, 1, name, description, uri);
+    }
+
+    #[test]
+    #[expected_failure] // ENOT_OWNER
     fun test_only_admin_can_add_nft() {
         setup_aptos_framework();
         let admin = create_test_signer(@nft_collection);

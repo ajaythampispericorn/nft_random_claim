@@ -13,19 +13,11 @@ module nft_collection::random_nft {
     // Define module addresses
     const ADMIN_ADDRESS: address = @nft_collection;
 
-    // Error categories in Move use specific ranges:
-    // 0x1 = INVALID_ARGUMENT
-    // 0x2 = REQUIRES_ADDRESS
-    // 0x3 = REQUIRES_CAPABILITY
-    // 0x4 = NOT_PUBLISHED
-    // 0x5 = ALREADY_PUBLISHED
-    // 0x6 = INVALID_STATE
-
-    const ENFT_ALREADY_EXISTS: u64 = 0x50001; // Using ALREADY_PUBLISHED category
-    const ENFT_DOES_NOT_EXIST: u64 = 0x40001; // Using NOT_PUBLISHED category
-    const ENOT_OWNER: u64 = 0x30001; // Using REQUIRES_CAPABILITY category
-    const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002; // Using NOT_PUBLISHED category
-    const EALL_TOKENS_CLAIMED: u64 = 0x60001; // Using INVALID_STATE category
+    const ENFT_ALREADY_EXISTS: u64 = 0x50001;
+    const ENOT_OWNER: u64 = 0x30001;
+    const ENFT_DOES_NOT_EXIST: u64 = 0x40001;
+    const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002;
+    const EALL_TOKENS_CLAIMED: u64 = 0x60001;
 
     // Store signer capability for the resource account
     struct ResourceAccountCap has key {
