@@ -11,13 +11,6 @@ This Move module implements a random NFT claiming mechanism using Aptos randomne
 * Global Storage: NFTs are stored in a Collection struct with a total supply cap  
 * Helper Functions: Query total supply, minted NFTs, and NFT details  
 
-## Error Codes  
-1. NFT_ALREADY_EXISTS (1): The NFT ID already exists  
-2. NFT_DOES_NOT_EXIST (2): The requested NFT ID does not exist
-3. NOT_OWNER (3): The caller is not the owner of the NFT
-4. COLLECTION_NOT_INITIALIZED (4): The NFT collection has not been initialized  
-5. ALL_TOKENS_CLAIMED (5): All NFTs have been claimed  
-
 ## Pre-Requisites  
 
 * APTOS CLI  
