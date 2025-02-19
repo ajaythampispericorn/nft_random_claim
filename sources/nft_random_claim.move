@@ -13,8 +13,8 @@ module nft_collection::random_nft {
     // Define module addresses
     const ADMIN_ADDRESS: address = @nft_collection;
 
-    const ENFT_ALREADY_EXISTS: u64 = 0x50001;
-    const ENOT_OWNER: u64 = 0x30001;
+    const ENFT_ALREADY_EXISTS: u64 = 0xD0001;
+    const ENOT_OWNER: u64 = 0x80001;
     const ENFT_DOES_NOT_EXIST: u64 = 0x40001;
     const ECOLLECTION_NOT_INITIALIZED: u64 = 0x40002;
     const EALL_TOKENS_CLAIMED: u64 = 0x60001;
